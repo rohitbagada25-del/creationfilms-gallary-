@@ -401,9 +401,8 @@ def photo_download(slug, photo_id):
         resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return resp
 
-
 if __name__ == "__main__":
     if not BOT_TOKEN or not CHANNEL_ID:
         print("WARNING: BOT_TOKEN / CHANNEL_ID not set. Copy .env.example to .env and fill it in.")
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False))
+    app.run(host="0.0.0.0", port=port, debug=False)
