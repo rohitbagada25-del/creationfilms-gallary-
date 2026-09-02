@@ -48,23 +48,61 @@ dropzone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => uploadFiles(fileInput.files));
 
 async function uploadFiles(fileList) {
-  if (!fileList.length) return;
-  const formData = new FormData();
-  for (const f of fileList) formData.append('photos', f);
-  progress.textContent = `Uploading ${fileList.length} photo(s)...`;
-  try {
-    const res = await fetch(`/admin/gallery/${slug}/upload`, { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.error) {
-      progress.textContent = `Error: ${data.error}`;
-    } else {
-      progress.textContent = `Done. ${data.total} photos in this gallery.`;
-      setTimeout(() => location.reload(), 600);
+  const files = Array.from(fileList);
+  if (!files.length) return;
+
+  const total = files.length;
+  let uploaded = 0;
+  let failed = 0;
+  const startTime = Date.now();
+
+  progress.textContent = `Uploading 0 of ${total}... (0s)`;
+
+  const timer = setInterval(() => {
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    progress.textContent = `Uploading ${uploaded} of ${total}... (${secs}s)`;
+  }, 500);
+
+  for (const f of files) {
+    const formData = new FormData();
+    formData.append('photos', f);
+    try {
+      const res = await fetch(`/admin/gallery/${slug}/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.error) {
+        failed++;
+      } else {
+        uploaded++;
+        if (data.photos_meta && data.photos_meta.length) {
+          addThumb(data.photos_meta[0]);
+        }
+      }
+    } catch (err) {
+      failed++;
     }
-  } catch (err) {
-    progress.textContent = `Upload failed: ${err}`;
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    progress.textContent = `Uploading ${uploaded} of ${total}... (${secs}s)`;
+  }
+
+  clearInterval(timer);
+  const totalSecs = Math.floor((Date.now() - startTime) / 1000);
+  if (failed) {
+    progress.textContent = `Done — ${uploaded} uploaded, ${failed} failed. (${totalSecs}s)`;
+  } else {
+    progress.textContent = `Done — ${uploaded} of ${total} photos uploaded in ${totalSecs}s.`;
   }
 }
+
+function addThumb(photo) {
+  const div = document.createElement('div');
+  div.className = 'thumb';
+  div.dataset.id = photo.id;
+  div.innerHTML = `
+    <img src="${photo.thumb_url}" loading="lazy">
+    <button class="del" onclick="deletePhoto('${photo.id}')">&times;</button>
+  `;
+  thumbGrid.prepend(div);
+                          }
 
 async function deletePhoto(id) {
   if (!confirm('Remove this photo from the gallery?')) return;
