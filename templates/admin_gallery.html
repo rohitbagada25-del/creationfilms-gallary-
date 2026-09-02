@@ -10,9 +10,22 @@
 <div class="admin-wrap">
   <p><a href="{{ url_for('admin_home') }}" style="color:var(--muted); font-size:0.85rem;">&larr; All galleries</a></p>
   <div class="display">{{ gallery.name }}</div>
-  <p style="color:var(--muted); margin-bottom:24px;">
-    Share this with your client: <code>{{ request.host_url }}gallery/{{ slug }}</code> &middot; password: <strong>{{ gallery.password }}</strong>
+  <p style="color:var(--muted); margin-bottom:12px;">
+    Share this with your client: <code>{{ request.host_url }}gallery/{{ slug }}</code>
   </p>
+
+  <div style="border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:16px; margin-bottom:24px;">
+    <div style="font-weight:600; margin-bottom:10px;">Gallery password</div>
+    <div style="color:var(--muted); font-size:.9rem; margin-bottom:12px;">
+      Current password: <strong id="currentPassword">{{ gallery.password }}</strong>
+    </div>
+    <form id="passwordForm" style="display:flex; gap:10px; flex-wrap:wrap;">
+      <input type="password" id="newPassword" placeholder="New password" autocomplete="new-password" required style="padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:#111; color:#fff;">
+      <input type="password" id="confirmPassword" placeholder="Confirm password" autocomplete="new-password" required style="padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:#111; color:#fff;">
+      <button type="submit" style="padding:10px 16px; border-radius:8px; border:0; cursor:pointer;">Change password</button>
+    </form>
+    <div id="passwordStatus" style="margin-top:10px; font-size:.9rem;"></div>
+  </div>
 
   <div class="upload-drop" id="dropzone">
     Click or drop photos here to upload to this gallery
@@ -20,6 +33,23 @@
   </div>
   <div class="progress" id="progress"></div>
 
+  <div class="upload-drop" id="videoDropzone" style="margin-top:16px;">
+    Click or drop videos here to upload to this gallery
+    <input type="file" id="videoInput" accept="video/*" multiple style="display:none">
+  </div>
+  <div class="progress" id="videoProgress"></div>
+
+  <h3 style="margin:28px 0 14px;">Videos</h3>
+  <div class="thumb-grid" id="videoGrid">
+    {% for v in gallery.get('videos', []) %}
+      <div class="thumb" data-video-id="{{ v.id }}" style="position:relative;">
+        <video src="{{ url_for('video_proxy', slug=slug, video_id=v.id) }}" controls muted preload="metadata" style="width:100%; display:block;"></video>
+        <button class="del" onclick="deleteVideo('{{ v.id }}')">&times;</button>
+      </div>
+    {% endfor %}
+  </div>
+
+  <h3 style="margin:28px 0 14px;">Photos</h3>
   <div class="thumb-grid" id="thumbGrid">
     {% for p in gallery.photos %}
       <div class="thumb" data-id="{{ p.id }}">
@@ -36,8 +66,22 @@ const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const progress = document.getElementById('progress');
 const thumbGrid = document.getElementById('thumbGrid');
+const videoDropzone = document.getElementById('videoDropzone');
+const videoInput = document.getElementById('videoInput');
+const videoProgress = document.getElementById('videoProgress');
+const videoGrid = document.getElementById('videoGrid');
 
 dropzone.addEventListener('click', () => fileInput.click());
+
+videoDropzone.addEventListener('click', () => videoInput.click());
+videoDropzone.addEventListener('dragover', e => { e.preventDefault(); videoDropzone.classList.add('drag'); });
+videoDropzone.addEventListener('dragleave', () => videoDropzone.classList.remove('drag'));
+videoDropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  videoDropzone.classList.remove('drag');
+  uploadVideos(e.dataTransfer.files);
+});
+videoInput.addEventListener('change', () => uploadVideos(videoInput.files));
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
 dropzone.addEventListener('drop', e => {
@@ -46,6 +90,30 @@ dropzone.addEventListener('drop', e => {
   uploadFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', () => uploadFiles(fileInput.files));
+
+document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const newPassword = document.getElementById('newPassword').value.trim();
+  const confirmPassword = document.getElementById('confirmPassword').value.trim();
+  const status = document.getElementById('passwordStatus');
+  if (!newPassword) { status.textContent = 'Enter a new password.'; return; }
+  if (newPassword !== confirmPassword) { status.textContent = 'Passwords do not match.'; return; }
+  status.textContent = 'Changing password...';
+  try {
+    const formData = new FormData();
+    formData.append('password', newPassword);
+    formData.append('confirm_password', confirmPassword);
+    const res = await fetch(`/admin/gallery/${slug}/password`, { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok || data.error) { status.textContent = data.error || 'Could not change password.'; return; }
+    document.getElementById('currentPassword').textContent = data.password;
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+    status.textContent = 'Password changed successfully.';
+  } catch (err) {
+    status.textContent = 'Something went wrong. Please try again.';
+  }
+});
 
 async function uploadFiles(fileList) {
   const files = Array.from(fileList);
@@ -93,6 +161,70 @@ async function uploadFiles(fileList) {
   }
 }
 
+async function uploadVideos(fileList) {
+  const files = Array.from(fileList);
+  if (!files.length) return;
+
+  const total = files.length;
+  let uploaded = 0;
+  let failed = 0;
+  const startTime = Date.now();
+
+  videoProgress.textContent = `Uploading 0 of ${total} videos... (0s)`;
+
+  const timer = setInterval(() => {
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    videoProgress.textContent = `Uploading ${uploaded} of ${total} videos... (${secs}s)`;
+  }, 500);
+
+  for (const f of files) {
+    const formData = new FormData();
+    formData.append('videos', f);
+    try {
+      const res = await fetch(`/admin/gallery/${slug}/video-upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        failed++;
+      } else {
+        uploaded++;
+        if (data.videos_meta && data.videos_meta.length) {
+          addVideoThumb(data.videos_meta[0]);
+        }
+      }
+    } catch (err) {
+      failed++;
+    }
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    videoProgress.textContent = `Uploading ${uploaded} of ${total} videos... (${secs}s)`;
+  }
+
+  clearInterval(timer);
+  videoProgress.textContent = failed
+    ? `Done — ${uploaded} uploaded, ${failed} failed.`
+    : `Done — ${uploaded} of ${total} videos uploaded.`;
+}
+
+function addVideoThumb(video) {
+  const div = document.createElement('div');
+  div.className = 'thumb';
+  div.dataset.videoId = video.id;
+  div.style.position = 'relative';
+  div.innerHTML = `
+    <video src="${video.video_url}" controls muted preload="metadata" style="width:100%; display:block;"></video>
+    <button class="del" onclick="deleteVideo('${video.id}')">&times;</button>
+  `;
+  videoGrid.prepend(div);
+}
+
+async function deleteVideo(id) {
+  if (!confirm('Remove this video from the gallery?')) return;
+  const res = await fetch(`/admin/gallery/${slug}/video/${id}/delete`, { method: 'POST' });
+  if (res.ok) {
+    const el = document.querySelector(`.thumb[data-video-id="${id}"]`);
+    if (el) el.remove();
+  }
+}
+
 function addThumb(photo) {
   const div = document.createElement('div');
   div.className = 'thumb';
@@ -113,4 +245,5 @@ async function deletePhoto(id) {
 }
 </script>
 </body>
-</html>
+          </html>
+  
