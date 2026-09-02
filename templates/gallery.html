@@ -5,6 +5,42 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ gallery.name }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:30px;line-height:42px;text-align:center;cursor:pointer;z-index:20;user-select:none;-webkit-tap-highlight-color:transparent}
+.lb-nav:hover{background:rgba(255,255,255,.18)}
+.lb-prev{left:18px}.lb-next{right:18px}
+#lbImage{
+  touch-action:pan-y;
+  user-select:none;
+  -webkit-user-drag:none;
+  will-change:transform,opacity;
+}
+.lb-counter{
+  position:absolute;
+  top:18px;
+  left:50%;
+  transform:translateX(-50%);
+  color:#fff;
+  background:rgba(0,0,0,.5);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:20px;
+  padding:7px 13px;
+  font-size:13px;
+  z-index:20;
+  letter-spacing:.3px;
+}
+.lb-swipe-left{animation:lbSwipeLeft .18s ease-out}
+.lb-swipe-right{animation:lbSwipeRight .18s ease-out}
+@keyframes lbSwipeLeft{
+  from{opacity:.45;transform:translateX(24px)}
+  to{opacity:1;transform:translateX(0)}
+}
+@keyframes lbSwipeRight{
+  from{opacity:.45;transform:translateX(-24px)}
+  to{opacity:1;transform:translateX(0)}
+}
+@media(max-width:600px){.lb-nav{width:40px;height:40px;font-size:26px;line-height:36px}.lb-prev{left:10px}.lb-next{right:10px}}
+</style>
 </head>
 <body>
 
@@ -23,7 +59,10 @@
 
 <div class="lightbox" id="lightbox">
   <button class="close" onclick="closeLightbox()">&times;</button>
+  <div class="lb-counter" id="lbCounter">1 / 1</div>
+  <button class="lb-nav lb-prev" id="lbPrev" onclick="previousPhoto()" aria-label="Previous photo">&#8249;</button>
   <img id="lbImage" src="" alt="">
+  <button class="lb-nav lb-next" id="lbNext" onclick="nextPhoto()" aria-label="Next photo">&#8250;</button>
   <div class="lb-bar">
     <button class="btn btn-outline" id="lbFav" style="width:auto; padding:10px 20px;" onclick="toggleFavCurrent()">Favorite</button>
     <a class="btn" id="lbDownload" style="width:auto; padding:10px 20px;" href="#">Download</a>
@@ -92,13 +131,47 @@ function openLightbox(id) {
   document.getElementById('lightbox').classList.add('open');
 }
 
-function showCurrent() {
+function showCurrent(direction = '') {
   const list = visiblePhotos();
+  if (!list.length) return;
+  if (currentIndex < 0) currentIndex = list.length - 1;
+  if (currentIndex >= list.length) currentIndex = 0;
+
   const p = list[currentIndex];
   if (!p) return;
-  document.getElementById('lbImage').src = p.thumb_url;
+
+  const img = document.getElementById('lbImage');
+  img.classList.remove('lb-swipe-left', 'lb-swipe-right');
+  void img.offsetWidth; // restart animation
+  if (direction === 'next') img.classList.add('lb-swipe-left');
+  if (direction === 'previous') img.classList.add('lb-swipe-right');
+
+  img.src = p.thumb_url;
   document.getElementById('lbDownload').href = `/gallery/${slug}/photo/${p.id}/download`;
+  document.getElementById('lbCounter').textContent = `${currentIndex + 1} / ${list.length}`;
   updateLightboxFavButton();
+  updateNavButtons();
+}
+
+function nextPhoto() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  currentIndex = (currentIndex + 1) % list.length;
+  showCurrent('next');
+}
+
+function previousPhoto() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  currentIndex = (currentIndex - 1 + list.length) % list.length;
+  showCurrent('previous');
+}
+
+function updateNavButtons() {
+  const list = visiblePhotos();
+  const hidden = list.length <= 1;
+  document.getElementById('lbPrev').style.display = hidden ? 'none' : 'block';
+  document.getElementById('lbNext').style.display = hidden ? 'none' : 'block';
 }
 
 function updateLightboxFavButton() {
@@ -114,9 +187,35 @@ function closeLightbox() {
 document.addEventListener('keydown', (e) => {
   if (!document.getElementById('lightbox').classList.contains('open')) return;
   if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowLeft') previousPhoto();
+  if (e.key === 'ArrowRight') nextPhoto();
 });
+
+let touchStartX = 0;
+let touchStartY = 0;
+
+const lbImage = document.getElementById('lbImage');
+
+lbImage.addEventListener('touchstart', (e) => {
+  if (!e.touches.length) return;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+lbImage.addEventListener('touchend', (e) => {
+  if (!e.changedTouches.length) return;
+
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+
+  if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+
+  if (dx < 0) nextPhoto();
+  else previousPhoto();
+}, { passive: true });
 
 load();
 </script>
 </body>
-</html>
+  </html>
+
