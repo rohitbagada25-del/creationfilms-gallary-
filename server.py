@@ -256,6 +256,8 @@ def admin_upload(slug):
     if not gallery:
         return jsonify({"error": "Gallery not found"}), 404
 
+    category = request.form.get("category", "").strip()
+
     uploaded = request.files.getlist("photos")
     added = []
     photos_meta = []
@@ -272,12 +274,14 @@ def admin_upload(slug):
             "message_id": message_id,
             "favorite": False,
             "filename": secure_filename(f.filename),
+            "category": category,
         }
         gallery["photos"].append(photo)
         added.append(photo["id"])
         photos_meta.append({
             "id": photo["id"],
             "thumb_url": url_for("photo_proxy", slug=slug, photo_id=photo["id"]),
+            "category": category,
         })
 
     save_db(db)
@@ -344,6 +348,7 @@ def api_gallery_photos(slug):
             "id": p["id"],
             "favorite": p.get("favorite", False),
             "thumb_url": url_for("photo_proxy", photo_id=p["id"], slug=slug),
+            "category": p.get("category", ""),
         }
         for p in gallery["photos"]
     ]
@@ -406,3 +411,4 @@ if __name__ == "__main__":
     if not BOT_TOKEN or not CHANNEL_ID:
         print("WARNING: BOT_TOKEN / CHANNEL_ID not set. Copy .env.example to .env and fill it in.")
     app.run(debug=True, port=5000)
+                                       
