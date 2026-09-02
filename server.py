@@ -200,6 +200,7 @@ def admin_upload(slug):
 
     uploaded = request.files.getlist("photos")
     added = []
+    photos_meta = []
     for f in uploaded:
         if not f or not f.filename:
             continue
@@ -216,9 +217,13 @@ def admin_upload(slug):
         }
         gallery["photos"].append(photo)
         added.append(photo["id"])
+        photos_meta.append({
+            "id": photo["id"],
+            "thumb_url": url_for("photo_proxy", slug=slug, photo_id=photo["id"]),
+        })
 
     save_db(db)
-    return jsonify({"added": added, "total": len(gallery["photos"])})
+    return jsonify({"added": added, "total": len(gallery["photos"]), "photos_meta": photos_meta})
 
 
 @app.route("/admin/gallery/<slug>/photo/<photo_id>/delete", methods=["POST"])
