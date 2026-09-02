@@ -37,6 +37,7 @@ and it gives you a public URL you can share with clients.
 """
 
 import os
+import io
 import json
 import uuid
 import time
@@ -69,20 +70,44 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
 # ---------------------------------------------------------------------
-# Tiny JSON "database". Fine for a small photography business; swap for
-# a real database later if you ever need to.
+# Tiny JSON "database", backed up to Telegram itself.
+#
+# Render's free plan wipes local files whenever the app restarts/sleeps,
+# so the local galleries.json alone is not reliable. Every save also
+# uploads the full JSON as a document to the Telegram channel and pins
+# it there; on startup, if the local file is missing, we pull the latest
+# backup back down from the pinned message. This keeps everything free
+# and inside Telegram -- no extra service/account needed.
 # ---------------------------------------------------------------------
 
 def load_db():
-    if not DATA_FILE.exists():
-        return {"galleries": {}}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+
+    # Local file missing (fresh restart) -- try restoring from Telegram.
+    if BOT_TOKEN and CHANNEL_ID:
+        try:
+            restored = tg_restore_db()
+            if restored is not None:
+                with open(DATA_FILE, "w") as f:
+                    json.dump(restored, f, indent=2)
+                return restored
+        except Exception as e:
+            print(f"WARNING: could not restore backup from Telegram: {e}")
+
+    return {"galleries": {}}
 
 
 def save_db(db):
     with open(DATA_FILE, "w") as f:
         json.dump(db, f, indent=2)
+    if BOT_TOKEN and CHANNEL_ID:
+        try:
+            tg_backup_db(db)
+        except Exception as e:
+            # Never let a backup failure break the actual user action.
+            print(f"WARNING: Telegram backup failed: {e}")
 
 
 def slugify(name):
@@ -92,6 +117,39 @@ def slugify(name):
 # ---------------------------------------------------------------------
 # Telegram helpers
 # ---------------------------------------------------------------------
+
+def tg_backup_db(db):
+    """Upload the current galleries.json to the channel and pin it."""
+    content = json.dumps(db, indent=2).encode("utf-8")
+    files = {"document": ("galleries_backup.json", io.BytesIO(content), "application/json")}
+    data = {"chat_id": CHANNEL_ID, "caption": "gallery-db-backup (auto)"}
+    r = requests.post(f"{TG_API}/sendDocument", data=data, files=files, timeout=60)
+    r.raise_for_status()
+    message_id = r.json()["result"]["message_id"]
+    try:
+        requests.post(
+            f"{TG_API}/pinChatMessage",
+            data={"chat_id": CHANNEL_ID, "message_id": message_id, "disable_notification": True},
+            timeout=30,
+        )
+    except Exception:
+        pass  # pinning needs "pin messages" admin right; backup itself still succeeded
+
+
+def tg_restore_db():
+    """Fetch the pinned backup document from the channel, if any."""
+    r = requests.get(f"{TG_API}/getChat", params={"chat_id": CHANNEL_ID}, timeout=30)
+    r.raise_for_status()
+    result = r.json().get("result", {})
+    pinned = result.get("pinned_message")
+    if not pinned or "document" not in pinned:
+        return None
+    file_id = pinned["document"]["file_id"]
+    file_path = tg_get_file_path(file_id)
+    file_url = f"{TG_FILE_API}/{file_path}"
+    r2 = requests.get(file_url, timeout=30)
+    r2.raise_for_status()
+    return r2.json()
 
 def tg_send_photo(file_storage, caption=""):
     """Upload one photo to the Telegram channel, return (file_id, message_id).
@@ -347,5 +405,4 @@ def photo_download(slug, photo_id):
 if __name__ == "__main__":
     if not BOT_TOKEN or not CHANNEL_ID:
         print("WARNING: BOT_TOKEN / CHANNEL_ID not set. Copy .env.example to .env and fill it in.")
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(debug=True, port=5000)
