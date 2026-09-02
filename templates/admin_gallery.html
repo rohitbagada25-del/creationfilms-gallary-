@@ -5,13 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ gallery.name }} — Studio Admin</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<style>
-.upload-progress{margin:10px 0 22px;display:none}
-.upload-progress .bar{height:8px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden}
-.upload-progress .fill{height:100%;width:0%;background:var(--accent,#d4af37);transition:width .15s ease}
-.upload-progress .info{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:.82rem}
-.upload-progress .eta{font-weight:600;color:#fff}
-</style>
 </head>
 <body>
 <div class="admin-wrap">
@@ -21,17 +14,27 @@
     Share this with your client: <code>{{ request.host_url }}gallery/{{ slug }}</code>
   </p>
 
-  <div style="border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:16px; margin-bottom:24px;">
+  <div style="border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:24px; background:#fff;">
     <div style="font-weight:600; margin-bottom:10px;">Gallery password</div>
     <div style="color:var(--muted); font-size:.9rem; margin-bottom:12px;">
       Current password: <strong id="currentPassword">{{ gallery.password }}</strong>
     </div>
     <form id="passwordForm" style="display:flex; gap:10px; flex-wrap:wrap;">
-      <input type="password" id="newPassword" placeholder="New password" autocomplete="new-password" required style="padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:#111; color:#fff;">
-      <input type="password" id="confirmPassword" placeholder="Confirm password" autocomplete="new-password" required style="padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:#111; color:#fff;">
-      <button type="submit" style="padding:10px 16px; border-radius:8px; border:0; cursor:pointer;">Change password</button>
+      <input type="password" id="newPassword" placeholder="New password" autocomplete="new-password" required style="padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink);">
+      <input type="password" id="confirmPassword" placeholder="Confirm password" autocomplete="new-password" required style="padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink);">
+      <button type="submit" style="padding:10px 16px; border-radius:8px; border:0; cursor:pointer; background:var(--brass); color:#fdfaf4; font-family:'Jost',sans-serif;">Change password</button>
     </form>
-    <div id="passwordStatus" style="margin-top:10px; font-size:.9rem;"></div>
+    <div id="passwordStatus" style="margin-top:10px; font-size:.9rem; color:var(--muted);"></div>
+  </div>
+
+  <div class="category-picker">
+    <label for="categoryInput">Album for next upload (e.g. Portraits, Results) — optional</label>
+    <input type="text" id="categoryInput" list="categoryList" placeholder="Uncategorized">
+    <datalist id="categoryList">
+      {% for c in gallery.photos|map(attribute='category', default='')|unique|list if c %}
+        <option value="{{ c }}">
+      {% endfor %}
+    </datalist>
   </div>
 
   <div class="upload-drop" id="dropzone">
@@ -65,11 +68,19 @@
   </div>
 
   <h3 style="margin:28px 0 14px;">Photos</h3>
-  <div class="thumb-grid" id="thumbGrid">
-    {% for p in gallery.photos %}
-      <div class="thumb" data-id="{{ p.id }}">
-        <img src="{{ url_for('photo_proxy', slug=slug, photo_id=p.id) }}" loading="lazy">
-        <button class="del" onclick="deletePhoto('{{ p.id }}')">&times;</button>
+  <div id="thumbSections">
+    {% set categories = gallery.photos|map(attribute='category', default='')|unique|list %}
+    {% for cat in categories|sort %}
+      <div class="thumb-section" data-category="{{ cat }}">
+        <div class="thumb-section-title">{{ cat if cat else 'Uncategorized' }}</div>
+        <div class="thumb-grid">
+          {% for p in gallery.photos if (p.category or '') == cat %}
+            <div class="thumb" data-id="{{ p.id }}">
+              <img src="{{ url_for('photo_proxy', slug=slug, photo_id=p.id) }}" loading="lazy">
+              <button class="del" onclick="deletePhoto('{{ p.id }}')">&times;</button>
+            </div>
+          {% endfor %}
+        </div>
       </div>
     {% endfor %}
   </div>
@@ -80,7 +91,8 @@ const slug = {{ slug|tojson }};
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const progress = document.getElementById('progress');
-const thumbGrid = document.getElementById('thumbGrid');
+const categoryInput = document.getElementById('categoryInput');
+const thumbSections = document.getElementById('thumbSections');
 const videoDropzone = document.getElementById('videoDropzone');
 const videoInput = document.getElementById('videoInput');
 const videoProgress = document.getElementById('videoProgress');
@@ -147,11 +159,14 @@ function formatTime(seconds) {
   return `${h}h ${mm}m`;
 }
 
-function uploadFileWithProgress(url, fieldName, file, onProgress) {
+function uploadFileWithProgress(url, fieldName, file, onProgress, extraFields) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append(fieldName, file);
+    if (extraFields) {
+      for (const [k, v] of Object.entries(extraFields)) formData.append(k, v);
+    }
 
     xhr.open('POST', url);
     xhr.upload.onprogress = (e) => {
@@ -170,11 +185,13 @@ function uploadFileWithProgress(url, fieldName, file, onProgress) {
 }
 
 async function uploadFiles(fileList) {
+  const category = categoryInput.value.trim();
   await uploadMedia(Array.from(fileList), {
     url: `/admin/gallery/${slug}/upload`, field: 'photos',
     progressBox: 'photoUploadProgress', fill: 'photoProgressFill',
     text: 'photoProgressText', eta: 'photoEta', legacy: progress,
-    label: 'photos', onSuccess: data => {
+    label: 'photos', extraFields: { category },
+    onSuccess: data => {
       if (data.photos_meta && data.photos_meta.length) addThumb(data.photos_meta[0]);
     }
   });
@@ -229,7 +246,7 @@ async function uploadMedia(files, cfg) {
     };
 
     try {
-      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update);
+      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
       completed++;
       uploadedBytes += currentSize;
       update(currentSize);
@@ -276,6 +293,18 @@ async function deleteVideo(id) {
 }
 
 function addThumb(photo) {
+  const cat = photo.category || '';
+  let section = thumbSections.querySelector(`.thumb-section[data-category="${cat}"]`);
+  if (!section) {
+    section = document.createElement('div');
+    section.className = 'thumb-section';
+    section.dataset.category = cat;
+    section.innerHTML = `
+      <div class="thumb-section-title">${cat || 'Uncategorized'}</div>
+      <div class="thumb-grid"></div>
+    `;
+    thumbSections.prepend(section);
+  }
   const div = document.createElement('div');
   div.className = 'thumb';
   div.dataset.id = photo.id;
@@ -283,7 +312,7 @@ function addThumb(photo) {
     <img src="${photo.thumb_url}" loading="lazy">
     <button class="del" onclick="deletePhoto('${photo.id}')">&times;</button>
   `;
-  thumbGrid.prepend(div);
+  section.querySelector('.thumb-grid').prepend(div);
 }
 
 async function deletePhoto(id) {
