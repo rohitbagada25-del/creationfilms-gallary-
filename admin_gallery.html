@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ gallery.name }} — Studio Admin</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="admin-wrap">
+  <p><a href="{{ url_for('admin_home') }}" style="color:var(--muted); font-size:0.85rem;">&larr; All galleries</a></p>
+  <div class="display">{{ gallery.name }}</div>
+  <p style="color:var(--muted); margin-bottom:24px;">
+    Share this with your client: <code>{{ request.host_url }}gallery/{{ slug }}</code> &middot; password: <strong>{{ gallery.password }}</strong>
+  </p>
+
+  <div class="upload-drop" id="dropzone">
+    Click or drop photos here to upload to this gallery
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+  </div>
+  <div class="progress" id="progress"></div>
+
+  <div class="thumb-grid" id="thumbGrid">
+    {% for p in gallery.photos %}
+      <div class="thumb" data-id="{{ p.id }}">
+        <img src="{{ url_for('photo_proxy', slug=slug, photo_id=p.id) }}" loading="lazy">
+        <button class="del" onclick="deletePhoto('{{ p.id }}')">&times;</button>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+const slug = {{ slug|tojson }};
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const progress = document.getElementById('progress');
+const thumbGrid = document.getElementById('thumbGrid');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  uploadFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => uploadFiles(fileInput.files));
+
+async function uploadFiles(fileList) {
+  if (!fileList.length) return;
+  const formData = new FormData();
+  for (const f of fileList) formData.append('photos', f);
+  progress.textContent = `Uploading ${fileList.length} photo(s)...`;
+  try {
+    const res = await fetch(`/admin/gallery/${slug}/upload`, { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      progress.textContent = `Error: ${data.error}`;
+    } else {
+      progress.textContent = `Done. ${data.total} photos in this gallery.`;
+      setTimeout(() => location.reload(), 600);
+    }
+  } catch (err) {
+    progress.textContent = `Upload failed: ${err}`;
+  }
+}
+
+async function deletePhoto(id) {
+  if (!confirm('Remove this photo from the gallery?')) return;
+  const res = await fetch(`/admin/gallery/${slug}/photo/${id}/delete`, { method: 'POST' });
+  if (res.ok) {
+    document.querySelector(`.thumb[data-id="${id}"]`).remove();
+  }
+}
+</script>
+</body>
+</html>
