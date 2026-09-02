@@ -6,8 +6,8 @@
 <title>{{ gallery.name }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <style>
-.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:30px;line-height:42px;text-align:center;cursor:pointer;z-index:20;user-select:none;-webkit-tap-highlight-color:transparent}
-.lb-nav:hover{background:rgba(255,255,255,.18)}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.75);color:var(--ink);font-size:30px;line-height:42px;text-align:center;cursor:pointer;z-index:20;user-select:none;-webkit-tap-highlight-color:transparent}
+.lb-nav:hover{background:#fff;border-color:var(--brass);color:var(--brass)}
 .lb-prev{left:18px}.lb-next{right:18px}
 #lbImage{
   touch-action:pan-y;
@@ -20,9 +20,9 @@
   top:18px;
   left:50%;
   transform:translateX(-50%);
-  color:#fff;
-  background:rgba(0,0,0,.5);
-  border:1px solid rgba(255,255,255,.18);
+  color:var(--ink);
+  background:rgba(255,255,255,.8);
+  border:1px solid var(--line);
   border-radius:20px;
   padding:7px 13px;
   font-size:13px;
@@ -49,9 +49,9 @@
   <div class="count" id="countLabel">{{ gallery.photos|length }} photos</div>
 </div>
 
-<div class="toolbar">
-  <button class="active" id="viewAll" onclick="setFilter('all')">All</button>
-  <button id="viewFavs" onclick="setFilter('favorites')">Favorites</button>
+<div class="toolbar" id="toolbar">
+  <button class="active" data-filter="all" onclick="setFilter('all')">All</button>
+  <button data-filter="favorites" onclick="setFilter('favorites')">Favorites</button>
 </div>
 
 <div class="grid" id="grid"></div>
@@ -79,11 +79,22 @@ async function load() {
   const res = await fetch(`/api/gallery/${slug}/photos`);
   const data = await res.json();
   photos = data.photos || [];
+  buildToolbar();
   render();
 }
 
+function buildToolbar() {
+  const toolbar = document.getElementById('toolbar');
+  const categories = [...new Set(photos.map(p => p.category).filter(c => c))].sort();
+  if (!categories.length) return;
+  const extra = categories.map(c => `<button data-filter="${c}" onclick="setFilter('${c}')">${c}</button>`).join('');
+  toolbar.insertAdjacentHTML('beforeend', extra);
+}
+
 function visiblePhotos() {
-  return filter === 'favorites' ? photos.filter(p => p.favorite) : photos;
+  if (filter === 'favorites') return photos.filter(p => p.favorite);
+  if (filter === 'all') return photos;
+  return photos.filter(p => p.category === filter);
 }
 
 function render() {
@@ -102,8 +113,9 @@ function render() {
 
 function setFilter(f) {
   filter = f;
-  document.getElementById('viewAll').classList.toggle('active', f === 'all');
-  document.getElementById('viewFavs').classList.toggle('active', f === 'favorites');
+  document.querySelectorAll('#toolbar button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === f);
+  });
   render();
 }
 
