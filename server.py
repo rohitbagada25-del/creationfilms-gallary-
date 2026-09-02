@@ -168,6 +168,18 @@ def tg_send_photo(file_storage, caption=""):
     return doc["file_id"], result["message_id"]
 
 
+
+def tg_send_video(file_storage, caption=""):
+    """Upload one video to the Telegram channel and return (file_id, message_id)."""
+    files = {"video": (file_storage.filename, file_storage.stream, file_storage.mimetype or "video/mp4")}
+    data = {"chat_id": CHANNEL_ID, "caption": caption, "supports_streaming": True}
+    r = requests.post(f"{TG_API}/sendVideo", data=data, files=files, timeout=300)
+    r.raise_for_status()
+    result = r.json()["result"]
+    video = result["video"]
+    return video["file_id"], result["message_id"]
+
+
 def tg_get_file_path(file_id):
     r = requests.get(f"{TG_API}/getFile", params={"file_id": file_id}, timeout=30)
     r.raise_for_status()
@@ -233,6 +245,7 @@ def admin_new_gallery():
             "password": password,
             "created": int(time.time()),
             "photos": [],  # each: {id, file_id, message_id, favorite}
+            "videos": [],  # each: {id, file_id, message_id, filename, mimetype}
         }
         save_db(db)
     return redirect(url_for("admin_gallery", slug=slug))
@@ -245,7 +258,29 @@ def admin_gallery(slug):
     gallery = db["galleries"].get(slug)
     if not gallery:
         return "Gallery not found", 404
+    gallery.setdefault("videos", [])
     return render_template("admin_gallery.html", slug=slug, gallery=gallery)
+
+
+@app.route("/admin/gallery/<slug>/password", methods=["POST"])
+@admin_required
+def admin_change_password(slug):
+    db = load_db()
+    gallery = db["galleries"].get(slug)
+    if not gallery:
+        return jsonify({"error": "Gallery not found"}), 404
+
+    new_password = request.form.get("password", "").strip()
+    confirm_password = request.form.get("confirm_password", "").strip()
+
+    if not new_password:
+        return jsonify({"error": "Password cannot be empty"}), 400
+    if new_password != confirm_password:
+        return jsonify({"error": "Passwords do not match"}), 400
+
+    gallery["password"] = new_password
+    save_db(db)
+    return jsonify({"ok": True, "password": new_password})
 
 
 @app.route("/admin/gallery/<slug>/upload", methods=["POST"])
@@ -282,6 +317,67 @@ def admin_upload(slug):
 
     save_db(db)
     return jsonify({"added": added, "total": len(gallery["photos"]), "photos_meta": photos_meta})
+
+
+
+@app.route("/admin/gallery/<slug>/video-upload", methods=["POST"])
+@admin_required
+def admin_upload_video(slug):
+    db = load_db()
+    gallery = db["galleries"].get(slug)
+    if not gallery:
+        return jsonify({"error": "Gallery not found"}), 404
+
+    gallery.setdefault("videos", [])
+    uploaded = request.files.getlist("videos")
+    added = []
+    videos_meta = []
+
+    for f in uploaded:
+        if not f or not f.filename:
+            continue
+        if not (f.mimetype or "").startswith("video/"):
+            continue
+        try:
+            file_id, message_id = tg_send_video(f, caption=gallery["name"])
+        except Exception as e:
+            return jsonify({"error": str(e), "added": added}), 500
+
+        video = {
+            "id": uuid.uuid4().hex[:12],
+            "file_id": file_id,
+            "message_id": message_id,
+            "filename": secure_filename(f.filename) or "video.mp4",
+            "mimetype": f.mimetype or "video/mp4",
+        }
+        gallery["videos"].append(video)
+        added.append(video["id"])
+        videos_meta.append({
+            "id": video["id"],
+            "video_url": url_for("video_proxy", slug=slug, video_id=video["id"]),
+            "filename": video["filename"],
+        })
+
+    save_db(db)
+    return jsonify({
+        "added": added,
+        "total": len(gallery["videos"]),
+        "videos_meta": videos_meta
+    })
+
+
+@app.route("/admin/gallery/<slug>/video/<video_id>/delete", methods=["POST"])
+@admin_required
+def admin_delete_video(slug, video_id):
+    db = load_db()
+    gallery = db["galleries"].get(slug)
+    if not gallery:
+        return jsonify({"error": "Gallery not found"}), 404
+
+    gallery.setdefault("videos", [])
+    gallery["videos"] = [v for v in gallery["videos"] if v["id"] != video_id]
+    save_db(db)
+    return jsonify({"ok": True})
 
 
 @app.route("/admin/gallery/<slug>/photo/<photo_id>/delete", methods=["POST"])
@@ -347,7 +443,16 @@ def api_gallery_photos(slug):
         }
         for p in gallery["photos"]
     ]
-    return jsonify({"name": gallery["name"], "photos": photos})
+    videos = [
+        {
+            "id": v["id"],
+            "filename": v.get("filename", "video.mp4"),
+            "video_url": url_for("video_proxy", slug=slug, video_id=v["id"]),
+            "download_url": url_for("video_download", slug=slug, video_id=v["id"]),
+        }
+        for v in gallery.get("videos", [])
+    ]
+    return jsonify({"name": gallery["name"], "photos": photos, "videos": videos})
 
 
 @app.route("/api/gallery/<slug>/photo/<photo_id>/favorite", methods=["POST"])
@@ -389,6 +494,57 @@ def photo_proxy(slug, photo_id):
     )
 
 
+
+@app.route("/gallery/<slug>/video/<video_id>/raw")
+def video_proxy(slug, video_id):
+    """Streams a Telegram-stored video to the client without exposing the bot token."""
+    db = load_db()
+    gallery = db["galleries"].get(slug)
+    if not gallery:
+        return "Not found", 404
+    if not session.get(f"unlocked_{slug}") and not session.get("is_admin"):
+        return "Locked", 403
+
+    video = next((v for v in gallery.get("videos", []) if v["id"] == video_id), None)
+    if not video:
+        return "Not found", 404
+
+    file_path = tg_get_file_path(video["file_id"])
+    tg_url = f"{TG_FILE_API}/{file_path}"
+
+    headers = {}
+    if request.headers.get("Range"):
+        headers["Range"] = request.headers["Range"]
+
+    r = requests.get(tg_url, headers=headers, stream=True, timeout=120)
+    response_headers = {}
+    for key in ("Content-Length", "Content-Range", "Accept-Ranges"):
+        if key in r.headers:
+            response_headers[key] = r.headers[key]
+
+    response_headers["Accept-Ranges"] = "bytes"
+
+    return Response(
+        stream_with_context(r.iter_content(chunk_size=1024 * 256)),
+        status=r.status_code,
+        headers=response_headers,
+        content_type=r.headers.get("Content-Type", video.get("mimetype", "video/mp4")),
+    )
+
+
+@app.route("/gallery/<slug>/video/<video_id>/download")
+def video_download(slug, video_id):
+    resp = video_proxy(slug, video_id)
+    if isinstance(resp, Response):
+        video = next(
+            (v for v in load_db()["galleries"][slug].get("videos", []) if v["id"] == video_id),
+            None,
+        )
+        filename = (video or {}).get("filename") or f"{video_id}.mp4"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp
+
+
 @app.route("/gallery/<slug>/photo/<photo_id>/download")
 def photo_download(slug, photo_id):
     resp = photo_proxy(slug, photo_id)
@@ -401,8 +557,10 @@ def photo_download(slug, photo_id):
         resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return resp
 
+
 if __name__ == "__main__":
     if not BOT_TOKEN or not CHANNEL_ID:
         print("WARNING: BOT_TOKEN / CHANNEL_ID not set. Copy .env.example to .env and fill it in.")
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
+   
