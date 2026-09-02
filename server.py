@@ -94,15 +94,20 @@ def slugify(name):
 # ---------------------------------------------------------------------
 
 def tg_send_photo(file_storage, caption=""):
-    """Upload one photo to the Telegram channel, return (file_id, message_id)."""
-    files = {"photo": (file_storage.filename, file_storage.stream, file_storage.mimetype)}
+    """Upload one photo to the Telegram channel, return (file_id, message_id).
+
+    Sent as a *document* rather than via sendPhoto: Telegram's sendPhoto
+    endpoint always compresses/resizes images (max ~1280px), while
+    sendDocument stores the exact original bytes, so client downloads stay
+    full resolution.
+    """
+    files = {"document": (file_storage.filename, file_storage.stream, file_storage.mimetype)}
     data = {"chat_id": CHANNEL_ID, "caption": caption}
-    r = requests.post(f"{TG_API}/sendPhoto", data=data, files=files, timeout=60)
+    r = requests.post(f"{TG_API}/sendDocument", data=data, files=files, timeout=120)
     r.raise_for_status()
     result = r.json()["result"]
-    photo_sizes = result["photo"]
-    largest = photo_sizes[-1]  # Telegram returns sizes smallest -> largest
-    return largest["file_id"], result["message_id"]
+    doc = result["document"]
+    return doc["file_id"], result["message_id"]
 
 
 def tg_get_file_path(file_id):
