@@ -576,4 +576,4 @@ def photo_download(slug, photo_id):
     resp = photo_proxy(slug, photo_id)
     if isinstance(resp, Response):
         photo = next(
-            (p for p in load_db()["galleries"][slug]["photos"
+            (p for p in load_db()["galleries"][slug]["photos"]
