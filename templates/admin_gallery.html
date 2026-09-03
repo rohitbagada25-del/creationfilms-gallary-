@@ -77,6 +77,7 @@
           {% for p in gallery.photos if (p.category or '') == cat %}
             <div class="thumb" data-id="{{ p.id }}">
               <img src="{{ url_for('photo_proxy', slug=slug, photo_id=p.id) }}" loading="lazy">
+              <button class="cover-btn {{ 'active' if gallery.cover_photo_id == p.id else '' }}" onclick="setCover('{{ p.id }}', this)" title="Set as cover photo">&#9733;</button>
               <button class="del" onclick="deletePhoto('{{ p.id }}')">&times;</button>
             </div>
           {% endfor %}
@@ -208,6 +209,54 @@ async function uploadVideos(fileList) {
   });
 }
 
+function waitForOnline(onWaiting) {
+  return new Promise(resolve => {
+    if (navigator.onLine) return resolve();
+    onWaiting();
+    const cleanup = () => {
+      clearInterval(poll);
+      window.removeEventListener('online', handler);
+    };
+    const handler = () => { cleanup(); resolve(); };
+    // 'online' event is unreliable on some mobile browsers, so also poll as a backup.
+    const poll = setInterval(() => {
+      if (navigator.onLine) { cleanup(); resolve(); }
+    }, 2000);
+    window.addEventListener('online', handler);
+  });
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function uploadOneWithRetry(file, cfg, update, text, eta, completedSoFar, total) {
+  let attempt = 0;
+  while (true) {
+    try {
+      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (err) {
+      attempt++;
+      if (!navigator.onLine) {
+        text.textContent = `${completedSoFar + 1} / ${total} • Connection lost — waiting to reconnect...`;
+        eta.textContent = 'Paused (no internet)';
+        await waitForOnline(() => {
+          text.textContent = `${completedSoFar + 1} / ${total} • Connection lost — waiting to reconnect...`;
+        });
+        text.textContent = `${completedSoFar + 1} / ${total} • Reconnected — resuming ${file.name}...`;
+        continue; // retry the same file, from the start of this file only
+      }
+      // Online but the request itself failed (server hiccup, Telegram timeout, etc.)
+      if (attempt > 5) throw err;
+      text.textContent = `${completedSoFar + 1} / ${total} • Retry ${attempt}/5 for ${file.name}...`;
+      eta.textContent = 'Retrying...';
+      await delay(2000 * attempt);
+    }
+  }
+}
+
 async function uploadMedia(files, cfg) {
   if (!files.length) return;
 
@@ -246,7 +295,7 @@ async function uploadMedia(files, cfg) {
     };
 
     try {
-      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
+      const data = await uploadOneWithRetry(file, cfg, update, text, eta, completed, total);
       completed++;
       uploadedBytes += currentSize;
       update(currentSize);
@@ -310,9 +359,18 @@ function addThumb(photo) {
   div.dataset.id = photo.id;
   div.innerHTML = `
     <img src="${photo.thumb_url}" loading="lazy">
+    <button class="cover-btn" onclick="setCover('${photo.id}', this)" title="Set as cover photo">&#9733;</button>
     <button class="del" onclick="deletePhoto('${photo.id}')">&times;</button>
   `;
   section.querySelector('.thumb-grid').prepend(div);
+}
+
+async function setCover(id, btnEl) {
+  const res = await fetch(`/admin/gallery/${slug}/photo/${id}/set-cover`, { method: 'POST' });
+  if (res.ok) {
+    document.querySelectorAll('.cover-btn.active').forEach(b => b.classList.remove('active'));
+    btnEl.classList.add('active');
+  }
 }
 
 async function deletePhoto(id) {
