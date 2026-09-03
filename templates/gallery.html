@@ -174,14 +174,15 @@ async function load() {
   const res = await fetch(`/api/gallery/${slug}/photos`);
   const data = await res.json();
   photos = data.photos || [];
-  setHeroImage();
+  setHeroImage(data.cover_photo_id);
   buildToolbar();
   render();
 }
 
-function setHeroImage() {
+function setHeroImage(coverId) {
   if (!photos.length) return;
-  document.getElementById('heroImage').src = photos[0].thumb_url;
+  const cover = coverId ? photos.find(p => p.id === coverId) : null;
+  document.getElementById('heroImage').src = (cover || photos[0]).thumb_url;
 }
 
 function showToast(msg) {
