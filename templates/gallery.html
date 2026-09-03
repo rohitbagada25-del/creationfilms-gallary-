@@ -6,6 +6,89 @@
 <title>{{ gallery.name }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <style>
+.hero {
+  position: relative;
+  width: 100%;
+  height: 62vh;
+  min-height: 320px;
+  max-height: 640px;
+  overflow: hidden;
+  background: var(--canvas-raised);
+}
+.hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(20,16,10,0.55) 0%, rgba(20,16,10,0.05) 45%, transparent 70%);
+}
+.hero-caption {
+  position: absolute;
+  left: 6vw;
+  bottom: 28px;
+  z-index: 2;
+}
+.hero-caption .display {
+  color: #fdfaf4;
+  font-size: clamp(2.2rem, 6vw, 3.6rem);
+  font-style: italic;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.25);
+}
+.hero-caption .count {
+  color: #f0e9da;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+  display: block;
+}
+.icon-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 6vw;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+}
+.icon-bar .icon-group {
+  display: flex;
+  gap: 18px;
+}
+.icon-bar button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Jost', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+.icon-bar button:hover { color: var(--brass); }
+.icon-bar .toast {
+  font-size: 0.8rem;
+  color: var(--brass);
+}
+.masonry {
+  padding: 24px 6vw 64px;
+  column-count: 2;
+  column-gap: 6px;
+}
+@media (min-width: 640px) { .masonry { column-count: 3; } }
+@media (min-width: 1000px) { .masonry { column-count: 4; } }
+.masonry .tile {
+  break-inside: avoid;
+  margin-bottom: 6px;
+  aspect-ratio: auto;
+}
+.masonry .tile img { height: auto; }
 .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.75);color:var(--ink);font-size:30px;line-height:42px;text-align:center;cursor:pointer;z-index:20;user-select:none;-webkit-tap-highlight-color:transparent}
 .lb-nav:hover{background:#fff;border-color:var(--brass);color:var(--brass)}
 .lb-prev{left:18px}.lb-next{right:18px}
@@ -44,9 +127,21 @@
 </head>
 <body>
 
-<div class="gallery-header">
-  <div class="display">{{ gallery.name }}</div>
-  <div class="count" id="countLabel">{{ gallery.photos|length }} photos</div>
+<div class="hero" id="hero">
+  <img id="heroImage" src="" alt="">
+  <div class="hero-caption">
+    <div class="display">{{ gallery.name }}</div>
+    <span class="count" id="countLabel">{{ gallery.photos|length }} photos</span>
+  </div>
+</div>
+
+<div class="icon-bar">
+  <div class="icon-group">
+    <button onclick="shareGallery()">&#128279; Share</button>
+    <button onclick="startSlideshow()">&#9654; Slideshow</button>
+    <button onclick="downloadAll()">&#8681; Download all</button>
+  </div>
+  <span class="toast" id="toast"></span>
 </div>
 
 <div class="toolbar" id="toolbar">
@@ -54,7 +149,7 @@
   <button data-filter="favorites" onclick="setFilter('favorites')">Favorites</button>
 </div>
 
-<div class="grid" id="grid"></div>
+<div class="masonry" id="grid"></div>
 <div class="empty-state" id="emptyState" style="display:none;">No photos yet — check back soon.</div>
 
 <div class="lightbox" id="lightbox">
@@ -79,8 +174,54 @@ async function load() {
   const res = await fetch(`/api/gallery/${slug}/photos`);
   const data = await res.json();
   photos = data.photos || [];
+  setHeroImage();
   buildToolbar();
   render();
+}
+
+function setHeroImage() {
+  if (!photos.length) return;
+  document.getElementById('heroImage').src = photos[0].thumb_url;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  setTimeout(() => { if (t.textContent === msg) t.textContent = ''; }, 2500);
+}
+
+function shareGallery() {
+  const url = window.location.href;
+  if (navigator.share) {
+    navigator.share({ title: document.title, url }).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => showToast('Link copied'));
+  }
+}
+
+let slideshowTimer = null;
+function startSlideshow() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  openLightbox(list[0].id);
+  clearInterval(slideshowTimer);
+  slideshowTimer = setInterval(() => nextPhoto(), 3000);
+}
+
+function downloadAll() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  showToast(`Starting ${list.length} downloads...`);
+  list.forEach((p, i) => {
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = `/gallery/${slug}/photo/${p.id}/download`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }, i * 400);
+  });
 }
 
 function buildToolbar() {
@@ -194,6 +335,7 @@ function updateLightboxFavButton() {
 
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('open');
+  clearInterval(slideshowTimer);
 }
 
 document.addEventListener('keydown', (e) => {
