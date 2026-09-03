@@ -8,7 +8,7 @@
 </head>
 <body>
 <div class="admin-wrap">
-  <p><a href="{{ url_for('admin_home') }}" style="color:var(--muted); font-size:0.85rem;">&larr; All galleries</a></p>
+  <p><a href="{{ url_for('admin_home') }}" id="backLink" style="color:var(--muted); font-size:0.85rem;">&larr; All galleries</a></p>
   <div class="display">{{ gallery.name }}</div>
   <p style="color:var(--muted); margin-bottom:12px;">
     Share this with your client: <code>{{ request.host_url }}gallery/{{ slug }}</code>
@@ -76,7 +76,7 @@
         <div class="thumb-grid">
           {% for p in gallery.photos if (p.category or '') == cat %}
             <div class="thumb" data-id="{{ p.id }}">
-              <img src="{{ url_for('photo_proxy', slug=slug, photo_id=p.id) }}" loading="lazy">
+              <img src="{{ url_for('photo_thumb', slug=slug, photo_id=p.id) }}" loading="lazy">
               <button class="cover-btn {{ 'active' if gallery.cover_photo_id == p.id else '' }}" onclick="setCover('{{ p.id }}', this)" title="Set as cover photo">&#9733;</button>
               <button class="del" onclick="deletePhoto('{{ p.id }}')">&times;</button>
             </div>
@@ -98,6 +98,54 @@ const videoDropzone = document.getElementById('videoDropzone');
 const videoInput = document.getElementById('videoInput');
 const videoProgress = document.getElementById('videoProgress');
 const videoGrid = document.getElementById('videoGrid');
+
+// Uploads run as JS on this page — navigating away (even to "All galleries" or
+// the client gallery link) cancels anything still in flight. This guard warns
+// before that happens instead of silently losing the upload.
+let uploadInProgress = false;
+let wakeLock = null;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (err) {
+    // Not supported / permission denied — uploads still work, screen just isn't kept awake.
+    wakeLock = null;
+  }
+}
+
+async function releaseWakeLock() {
+  try {
+    if (wakeLock) {
+      await wakeLock.release();
+    }
+  } catch (err) { /* ignore */ }
+  wakeLock = null;
+}
+
+// The Wake Lock spec auto-releases when the tab is hidden (screen locked /
+// app switched away) — reacquire it once the tab is visible again if an
+// upload is still running.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && uploadInProgress && !wakeLock) {
+    await requestWakeLock();
+  }
+});
+
+window.addEventListener('beforeunload', (e) => {
+  if (!uploadInProgress) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+document.getElementById('backLink').addEventListener('click', (e) => {
+  if (!uploadInProgress) return;
+  if (!confirm('Upload chalu che. Have javathi baki photos/videos upload nahi thay. Have j javu che?')) {
+    e.preventDefault();
+  }
+});
 
 dropzone.addEventListener('click', () => fileInput.click());
 
@@ -209,8 +257,58 @@ async function uploadVideos(fileList) {
   });
 }
 
+function waitForOnline(onWaiting) {
+  return new Promise(resolve => {
+    if (navigator.onLine) return resolve();
+    onWaiting();
+    const cleanup = () => {
+      clearInterval(poll);
+      window.removeEventListener('online', handler);
+    };
+    const handler = () => { cleanup(); resolve(); };
+    // 'online' event is unreliable on some mobile browsers, so also poll as a backup.
+    const poll = setInterval(() => {
+      if (navigator.onLine) { cleanup(); resolve(); }
+    }, 2000);
+    window.addEventListener('online', handler);
+  });
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function uploadOneWithRetry(file, cfg, update, text, eta, completedSoFar, total) {
+  let attempt = 0;
+  while (true) {
+    try {
+      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (err) {
+      attempt++;
+      if (!navigator.onLine) {
+        text.textContent = `${completedSoFar + 1} / ${total} • Connection lost — waiting to reconnect...`;
+        eta.textContent = 'Paused (no internet)';
+        await waitForOnline(() => {
+          text.textContent = `${completedSoFar + 1} / ${total} • Connection lost — waiting to reconnect...`;
+        });
+        text.textContent = `${completedSoFar + 1} / ${total} • Reconnected — resuming ${file.name}...`;
+        continue; // retry the same file, from the start of this file only
+      }
+      // Online but the request itself failed (server hiccup, Telegram timeout, etc.)
+      if (attempt > 5) throw err;
+      text.textContent = `${completedSoFar + 1} / ${total} • Retry ${attempt}/5 for ${file.name}...`;
+      eta.textContent = 'Retrying...';
+      await delay(2000 * attempt);
+    }
+  }
+}
+
 async function uploadMedia(files, cfg) {
   if (!files.length) return;
+  uploadInProgress = true;
+  await requestWakeLock();
 
   const total = files.length;
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
@@ -247,7 +345,7 @@ async function uploadMedia(files, cfg) {
     };
 
     try {
-      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
+      const data = await uploadOneWithRetry(file, cfg, update, text, eta, completed, total);
       completed++;
       uploadedBytes += currentSize;
       update(currentSize);
@@ -270,6 +368,8 @@ async function uploadMedia(files, cfg) {
   cfg.legacy.textContent = failed
     ? `Done — ${completed} uploaded, ${failed} failed. (${formatTime(totalTime)})`
     : `Done — ${completed} of ${total} ${cfg.label} uploaded in ${formatTime(totalTime)}.`;
+  uploadInProgress = false;
+  await releaseWakeLock();
 }
 
 function addVideoThumb(video) {
