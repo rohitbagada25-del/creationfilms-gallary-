@@ -209,54 +209,6 @@ async function uploadVideos(fileList) {
   });
 }
 
-function waitForOnline(onWaiting) {
-  return new Promise(resolve => {
-    if (navigator.onLine) return resolve();
-    onWaiting();
-    const cleanup = () => {
-      clearInterval(poll);
-      window.removeEventListener('online', handler);
-    };
-    const handler = () => { cleanup(); resolve(); };
-    // 'online' event is unreliable on some mobile browsers, so also poll as a backup.
-    const poll = setInterval(() => {
-      if (navigator.onLine) { cleanup(); resolve(); }
-    }, 2000);
-    window.addEventListener('online', handler);
-  });
-}
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function uploadOneWithRetry(file, cfg, update, text, eta, completedSoFar, total) {
-  let attempt = 0;
-  while (true) {
-    try {
-      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
-      if (data.error) throw new Error(data.error);
-      return data;
-    } catch (err) {
-      attempt++;
-      if (!navigator.onLine) {
-        text.textContent = `${completedSoFar + 1} / ${total} • Connection lost — waiting to reconnect...`;
-        eta.textContent = 'Paused (no internet)';
-        await waitForOnline(() => {
-          text.textContent = `${completedSoFar + 1} / ${total} • Connection lost — waiting to reconnect...`;
-        });
-        text.textContent = `${completedSoFar + 1} / ${total} • Reconnected — resuming ${file.name}...`;
-        continue; // retry the same file, from the start of this file only
-      }
-      // Online but the request itself failed (server hiccup, Telegram timeout, etc.)
-      if (attempt > 5) throw err;
-      text.textContent = `${completedSoFar + 1} / ${total} • Retry ${attempt}/5 for ${file.name}...`;
-      eta.textContent = 'Retrying...';
-      await delay(2000 * attempt);
-    }
-  }
-}
-
 async function uploadMedia(files, cfg) {
   if (!files.length) return;
 
@@ -295,7 +247,7 @@ async function uploadMedia(files, cfg) {
     };
 
     try {
-      const data = await uploadOneWithRetry(file, cfg, update, text, eta, completed, total);
+      const data = await uploadFileWithProgress(cfg.url, cfg.field, file, update, cfg.extraFields);
       completed++;
       uploadedBytes += currentSize;
       update(currentSize);
