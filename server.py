@@ -392,8 +392,24 @@ def admin_delete_photo(slug, photo_id):
     if not gallery:
         return jsonify({"error": "Gallery not found"}), 404
     gallery["photos"] = [p for p in gallery["photos"] if p["id"] != photo_id]
+    if gallery.get("cover_photo_id") == photo_id:
+        gallery["cover_photo_id"] = None
     save_db(db)
     return jsonify({"ok": True})
+
+
+@app.route("/admin/gallery/<slug>/photo/<photo_id>/set-cover", methods=["POST"])
+@admin_required
+def admin_set_cover(slug, photo_id):
+    db = load_db()
+    gallery = db["galleries"].get(slug)
+    if not gallery:
+        return jsonify({"error": "Gallery not found"}), 404
+    if not any(p["id"] == photo_id for p in gallery["photos"]):
+        return jsonify({"error": "Photo not found"}), 404
+    gallery["cover_photo_id"] = photo_id
+    save_db(db)
+    return jsonify({"ok": True, "cover_photo_id": photo_id})
 
 
 @app.route("/admin/gallery/<slug>/delete", methods=["POST"])
@@ -457,7 +473,12 @@ def api_gallery_photos(slug):
         }
         for v in gallery.get("videos", [])
     ]
-    return jsonify({"name": gallery["name"], "photos": photos, "videos": videos})
+    return jsonify({
+        "name": gallery["name"],
+        "photos": photos,
+        "videos": videos,
+        "cover_photo_id": gallery.get("cover_photo_id"),
+    })
 
 
 @app.route("/api/gallery/<slug>/photo/<photo_id>/favorite", methods=["POST"])
@@ -555,18 +576,4 @@ def photo_download(slug, photo_id):
     resp = photo_proxy(slug, photo_id)
     if isinstance(resp, Response):
         photo = next(
-            (p for p in load_db()["galleries"][slug]["photos"] if p["id"] == photo_id),
-            None,
-        )
-        filename = (photo or {}).get("filename") or f"{photo_id}.jpg"
-        resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
-    return resp
-
-
-if __name__ == "__main__":
-    if not BOT_TOKEN or not CHANNEL_ID:
-        print("WARNING: BOT_TOKEN / CHANNEL_ID not set. Copy .env.example to .env and fill it in.")
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
-
-
+            (p for p in load_db()["galleries"][slug]["photos"
