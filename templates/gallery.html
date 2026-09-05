@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ gallery.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.hero {
+  position: relative;
+  width: 100%;
+  height: 62vh;
+  min-height: 320px;
+  max-height: 640px;
+  overflow: hidden;
+  background: var(--canvas-raised);
+}
+.hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(20,16,10,0.55) 0%, rgba(20,16,10,0.05) 45%, transparent 70%);
+}
+.hero-caption {
+  position: absolute;
+  left: 6vw;
+  bottom: 28px;
+  z-index: 2;
+}
+.hero-caption .display {
+  color: #fdfaf4;
+  font-size: clamp(2.2rem, 6vw, 3.6rem);
+  font-style: italic;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.25);
+}
+.hero-caption .count {
+  color: #f0e9da;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+  display: block;
+}
+.icon-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 6vw;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+}
+.icon-bar .icon-group {
+  display: flex;
+  gap: 18px;
+}
+.icon-bar button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Jost', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+.icon-bar button:hover { color: var(--brass); }
+.icon-bar .toast {
+  font-size: 0.8rem;
+  color: var(--brass);
+}
+.masonry {
+  padding: 24px 6vw 64px;
+  column-count: 2;
+  column-gap: 6px;
+}
+@media (min-width: 640px) { .masonry { column-count: 3; } }
+@media (min-width: 1000px) { .masonry { column-count: 4; } }
+.masonry .tile {
+  break-inside: avoid;
+  margin-bottom: 6px;
+  aspect-ratio: auto;
+}
+.masonry .tile img { height: auto; }
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.75);color:var(--ink);font-size:30px;line-height:42px;text-align:center;cursor:pointer;z-index:20;user-select:none;-webkit-tap-highlight-color:transparent}
+.lb-nav:hover{background:#fff;border-color:var(--brass);color:var(--brass)}
+.lb-prev{left:18px}.lb-next{right:18px}
+#lbImage{
+  touch-action:pan-y;
+  user-select:none;
+  -webkit-user-drag:none;
+  will-change:transform,opacity;
+}
+.lb-counter{
+  position:absolute;
+  top:18px;
+  left:50%;
+  transform:translateX(-50%);
+  color:var(--ink);
+  background:rgba(255,255,255,.8);
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:7px 13px;
+  font-size:13px;
+  z-index:20;
+  letter-spacing:.3px;
+}
+.lb-swipe-left{animation:lbSwipeLeft .18s ease-out}
+.lb-swipe-right{animation:lbSwipeRight .18s ease-out}
+@keyframes lbSwipeLeft{
+  from{opacity:.45;transform:translateX(24px)}
+  to{opacity:1;transform:translateX(0)}
+}
+@keyframes lbSwipeRight{
+  from{opacity:.45;transform:translateX(-24px)}
+  to{opacity:1;transform:translateX(0)}
+}
+@media(max-width:600px){.lb-nav{width:40px;height:40px;font-size:26px;line-height:36px}.lb-prev{left:10px}.lb-next{right:10px}}
+</style>
+</head>
+<body>
+
+<div class="hero" id="hero">
+  <img id="heroImage" src="" alt="">
+  <div class="hero-caption">
+    <div class="display">{{ gallery.name }}</div>
+    <span class="count" id="countLabel">{{ gallery.photos|length }} photos</span>
+  </div>
+</div>
+
+<div class="icon-bar">
+  <div class="icon-group">
+    <button onclick="shareGallery()">&#128279; Share</button>
+    <button onclick="startSlideshow()">&#9654; Slideshow</button>
+    <button onclick="downloadAll()">&#8681; Download all</button>
+  </div>
+  <span class="toast" id="toast"></span>
+</div>
+
+<div class="toolbar" id="toolbar">
+  <button class="active" data-filter="all" onclick="setFilter('all')">All</button>
+  <button data-filter="favorites" onclick="setFilter('favorites')">Favorites</button>
+</div>
+
+<div class="masonry" id="grid"></div>
+<div class="empty-state" id="emptyState" style="display:none;">No photos yet — check back soon.</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="close" onclick="closeLightbox()">&times;</button>
+  <div class="lb-counter" id="lbCounter">1 / 1</div>
+  <button class="lb-nav lb-prev" id="lbPrev" onclick="previousPhoto()" aria-label="Previous photo">&#8249;</button>
+  <img id="lbImage" src="" alt="">
+  <button class="lb-nav lb-next" id="lbNext" onclick="nextPhoto()" aria-label="Next photo">&#8250;</button>
+  <div class="lb-bar">
+    <button class="btn btn-outline" id="lbFav" style="width:auto; padding:10px 20px;" onclick="toggleFavCurrent()">Favorite</button>
+    <a class="btn" id="lbDownload" style="width:auto; padding:10px 20px;" href="#">Download</a>
+  </div>
+</div>
+
+<script>
+const slug = {{ slug|tojson }};
+let photos = [];
+let filter = 'all';
+let currentIndex = 0;
+
+async function load() {
+  const res = await fetch(`/api/gallery/${slug}/photos`);
+  const data = await res.json();
+  photos = data.photos || [];
+  setHeroImage(data.cover_photo_id);
+  buildToolbar();
+  render();
+}
+
+function setHeroImage(coverId) {
+  if (!photos.length) return;
+  const cover = coverId ? photos.find(p => p.id === coverId) : null;
+  document.getElementById('heroImage').src = (cover || photos[0]).thumb_url;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  setTimeout(() => { if (t.textContent === msg) t.textContent = ''; }, 2500);
+}
+
+function shareGallery() {
+  const url = window.location.href;
+  if (navigator.share) {
+    navigator.share({ title: document.title, url }).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => showToast('Link copied'));
+  }
+}
+
+let slideshowTimer = null;
+function startSlideshow() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  openLightbox(list[0].id);
+  clearInterval(slideshowTimer);
+  slideshowTimer = setInterval(() => nextPhoto(), 3000);
+}
+
+function downloadAll() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  showToast(`Starting ${list.length} downloads...`);
+  list.forEach((p, i) => {
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = `/gallery/${slug}/photo/${p.id}/download`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }, i * 400);
+  });
+}
+
+function buildToolbar() {
+  const toolbar = document.getElementById('toolbar');
+  const categories = [...new Set(photos.map(p => p.category).filter(c => c))].sort();
+  if (!categories.length) return;
+  const extra = categories.map(c => `<button data-filter="${c}" onclick="setFilter('${c}')">${c}</button>`).join('');
+  toolbar.insertAdjacentHTML('beforeend', extra);
+}
+
+function visiblePhotos() {
+  if (filter === 'favorites') return photos.filter(p => p.favorite);
+  if (filter === 'all') return photos;
+  return photos.filter(p => p.category === filter);
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  const list = visiblePhotos();
+  document.getElementById('emptyState').style.display = list.length ? 'none' : 'block';
+  document.getElementById('countLabel').textContent = `${photos.length} photos`;
+
+  grid.innerHTML = list.map((p, i) => `
+    <div class="tile" data-id="${p.id}" onclick="openLightbox('${p.id}')">
+      <img src="${p.thumb_url}" loading="${i < 12 ? "eager" : "lazy"}" fetchpriority="${i < 6 ? "high" : "auto"}" alt="">
+      <div class="fav ${p.favorite ? 'active' : ''}" onclick="event.stopPropagation(); toggleFav('${p.id}')">&#9825;</div>
+    </div>
+  `).join('');
+}
+
+function setFilter(f) {
+  filter = f;
+  document.querySelectorAll('#toolbar button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === f);
+  });
+  render();
+}
+
+async function toggleFav(id) {
+  const res = await fetch(`/api/gallery/${slug}/photo/${id}/favorite`, { method: 'POST' });
+  const data = await res.json();
+  const p = photos.find(p => p.id === id);
+  if (p) p.favorite = data.favorite;
+  render();
+  if (document.getElementById('lightbox').classList.contains('open')) {
+    updateLightboxFavButton();
+  }
+}
+
+function toggleFavCurrent() {
+  const list = visiblePhotos();
+  const p = list[currentIndex];
+  if (p) toggleFav(p.id);
+}
+
+function openLightbox(id) {
+  const list = visiblePhotos();
+  currentIndex = list.findIndex(p => p.id === id);
+  showCurrent();
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function showCurrent(direction = '') {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  if (currentIndex < 0) currentIndex = list.length - 1;
+  if (currentIndex >= list.length) currentIndex = 0;
+
+  const p = list[currentIndex];
+  if (!p) return;
+
+  const img = document.getElementById('lbImage');
+  img.classList.remove('lb-swipe-left', 'lb-swipe-right');
+  void img.offsetWidth; // restart animation
+  if (direction === 'next') img.classList.add('lb-swipe-left');
+  if (direction === 'previous') img.classList.add('lb-swipe-right');
+
+  img.src = p.preview_url || p.thumb_url;
+  // Warm the next/previous preview while the client is viewing this photo.
+  const next = list[(currentIndex + 1) % list.length];
+  const prev = list[(currentIndex - 1 + list.length) % list.length];
+  [next, prev].forEach(item => {
+    if (item && item.preview_url) {
+      const preload = new Image();
+      preload.src = item.preview_url;
+    }
+  });
+  document.getElementById('lbDownload').href = `/gallery/${slug}/photo/${p.id}/download`;
+  document.getElementById('lbCounter').textContent = `${currentIndex + 1} / ${list.length}`;
+  updateLightboxFavButton();
+  updateNavButtons();
+}
+
+function nextPhoto() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  currentIndex = (currentIndex + 1) % list.length;
+  showCurrent('next');
+}
+
+function previousPhoto() {
+  const list = visiblePhotos();
+  if (!list.length) return;
+  currentIndex = (currentIndex - 1 + list.length) % list.length;
+  showCurrent('previous');
+}
+
+function updateNavButtons() {
+  const list = visiblePhotos();
+  const hidden = list.length <= 1;
+  document.getElementById('lbPrev').style.display = hidden ? 'none' : 'block';
+  document.getElementById('lbNext').style.display = hidden ? 'none' : 'block';
+}
+
+function updateLightboxFavButton() {
+  const list = visiblePhotos();
+  const p = list[currentIndex];
+  document.getElementById('lbFav').textContent = p && p.favorite ? 'Favorited ✓' : 'Favorite';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  clearInterval(slideshowTimer);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowLeft') previousPhoto();
+  if (e.key === 'ArrowRight') nextPhoto();
+});
+
+let touchStartX = 0;
+let touchStartY = 0;
+
+const lbImage = document.getElementById('lbImage');
+
+lbImage.addEventListener('touchstart', (e) => {
+  if (!e.touches.length) return;
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+lbImage.addEventListener('touchend', (e) => {
+  if (!e.changedTouches.length) return;
+
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+
+  if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+
+  if (dx < 0) nextPhoto();
+  else previousPhoto();
+}, { passive: true });
+
+load();
+</script>
+</body>
+  </html>
+
