@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio Admin</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="gate">
+  <div class="gate-card">
+    <div class="display">Studio Admin</div>
+    <p class="sub">Enter your admin key to manage client galleries.</p>
+    {% if error %}<div class="error-msg">{{ error }}</div>{% endif %}
+    <form class="gate-form" method="post">
+      <input type="password" name="key" placeholder="Admin key" autofocus required>
+      <button class="btn" type="submit">Enter</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
