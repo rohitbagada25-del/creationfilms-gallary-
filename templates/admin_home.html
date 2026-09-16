@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio Admin</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="admin-wrap">
+  <div class="display">Client galleries</div>
+
+  <form class="new-gallery-form" method="post" action="{{ url_for('admin_new_gallery') }}">
+    <input type="text" name="name" placeholder="Client / shoot name, e.g. Priya & Arjun Wedding" required>
+    <input type="text" name="password" placeholder="Gallery password" required>
+    <button class="btn" style="width:auto; padding:10px 22px;" type="submit">Create gallery</button>
+  </form>
+
+  {% if not galleries %}
+    <div class="empty-state">No galleries yet. Create your first one above.</div>
+  {% endif %}
+
+  {% for slug, g in galleries.items() %}
+    <div class="gallery-list-item">
+      <div>
+        <div class="name">{{ g.name }}</div>
+        <div class="meta">{{ g.photos|length }} photos &middot; password: {{ g.password }}</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <a class="btn btn-outline" style="width:auto; padding:8px 16px;" href="{{ url_for('admin_gallery', slug=slug) }}">Manage</a>
+        <a class="btn btn-outline" style="width:auto; padding:8px 16px;" href="{{ url_for('client_gallery', slug=slug) }}" target="_blank">View</a>
+      </div>
+    </div>
+  {% endfor %}
+
+  <p style="margin-top:40px;"><a href="{{ url_for('admin_logout') }}" style="color:var(--muted); font-size:0.85rem;">Log out</a></p>
+</div>
+</body>
+</html>
