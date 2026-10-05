@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ gallery.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.cg-gate {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, #3a332a 0%, #211c16 55%, #16120d 100%);
+  padding: 24px;
+}
+.cg-gate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 50% at 50% 30%, rgba(255,255,255,0.06), transparent 70%);
+  pointer-events: none;
+}
+.cg-eyebrow {
+  position: absolute;
+  top: 36px;
+  left: 0; right: 0;
+  text-align: center;
+  color: rgba(253,250,244,0.85);
+  font-size: 0.72rem;
+  letter-spacing: 0.32em;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+.cg-gate-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+.cg-gate-card .display {
+  color: #fdfaf4;
+  font-size: clamp(1.9rem, 6vw, 2.5rem);
+  font-style: italic;
+  margin-bottom: 10px;
+}
+.cg-gate-card p.sub {
+  color: rgba(253,250,244,0.65);
+  font-size: 0.85rem;
+  margin: 0 0 34px;
+  line-height: 1.5;
+}
+.cg-gate-form input[type="password"] {
+  width: 100%;
+  padding: 16px 18px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fdfaf4;
+  font-size: 1rem;
+  text-align: center;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  font-family: 'Jost', sans-serif;
+}
+.cg-gate-form input::placeholder { color: rgba(253,250,244,0.55); }
+.cg-gate-form input:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.12);
+}
+.cg-btn {
+  display: block;
+  width: 100%;
+  padding: 16px 18px;
+  background: #fdfaf4;
+  color: #211c16;
+  border: none;
+  font-family: 'Jost', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.cg-btn:hover { background: #fff; }
+.cg-error {
+  color: #ffb4a0;
+  font-size: 0.85rem;
+  margin-bottom: 14px;
+}
+</style>
+</head>
+<body>
+<div class="cg-gate">
+  <div class="cg-eyebrow">Creation Films</div>
+  <div class="cg-gate-card">
+    <div class="display">{{ gallery.name }}</div>
+    <p class="sub">This gallery is private.<br>Enter the password your photographer shared with you.</p>
+    {% if error %}<div class="cg-error">{{ error }}</div>{% endif %}
+    <form class="cg-gate-form" method="post">
+      <input type="password" name="password" placeholder="Enter Gallery Password" autofocus required>
+      <button class="cg-btn" type="submit">Enter Gallery</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
