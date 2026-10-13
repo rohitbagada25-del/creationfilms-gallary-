@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Creation Films</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="admin-wrap">
+  <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:26px;">
+    <div>
+      <div style="font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Creation Films · Studio Admin</div>
+      <h1 class="display">Dashboard</h1>
+      <div style="font-size:.75rem;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin-top:5px;">Overview & recent galleries</div>
+    </div>
+    <a class="btn" style="width:auto;text-decoration:none;" href="#create-gallery">＋ New gallery</a>
+  </header>
+
+  {% set total_photos = namespace(value=0) %}
+  {% for slug, g in galleries.items() %}{% set total_photos.value = total_photos.value + (g.photos|length) %}{% endfor %}
+  <section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:34px;">
+    <div style="padding:20px;background:#e8e3dc;border:1px solid var(--line);"><div style="font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);">Total galleries</div><div style="font:2rem 'Cormorant Garamond',Georgia,serif;margin-top:8px;">{{ galleries|length }}</div></div>
+    <div style="padding:20px;background:#e8e3dc;border:1px solid var(--line);"><div style="font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);">Total photos</div><div style="font:2rem 'Cormorant Garamond',Georgia,serif;margin-top:8px;">{{ total_photos.value }}</div></div>
+  </section>
+
+  <section id="create-gallery" style="margin-bottom:34px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+      <h2 style="font-size:1.45rem;">Create a gallery</h2>
+      <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">New client delivery</span>
+    </div>
+    <form class="new-gallery-form" method="post" action="{{ url_for('admin_new_gallery') }}">
+      <input type="text" name="name" placeholder="Client / shoot name, e.g. Priya & Arjun Wedding" required>
+      <input type="text" name="password" placeholder="Gallery password" required>
+      <button class="btn" style="width:auto;" type="submit">Create gallery</button>
+    </form>
+  </section>
+
+  <section>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+      <h2 style="font-size:1.45rem;">Recent galleries</h2>
+      <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">{{ galleries|length }} total</span>
+    </div>
+    {% if not galleries %}
+      <div class="empty-state" style="border:1px solid var(--line);background:var(--panel);">No galleries yet. Create your first one above.</div>
+    {% else %}
+      {% for slug, g in galleries.items() %}
+        <div class="gallery-list-item">
+          <div style="min-width:0;">
+            <div class="name">{{ g.name }}</div>
+            <div class="meta">{{ g.photos|length }} photos · Password protected</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <a class="btn btn-outline" style="width:auto;text-decoration:none;" href="{{ url_for('client_gallery', slug=slug) }}" target="_blank" rel="noopener">View</a>
+            <a class="btn" style="width:auto;text-decoration:none;" href="{{ url_for('admin_gallery', slug=slug) }}">Manage</a>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  </section>
+
+  <footer style="margin-top:36px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:.75rem;">
+    <span>Creation Films · Private client galleries</span>
+    <a href="{{ url_for('admin_logout') }}">Log out ↗</a>
+  </footer>
+</div>
+</body>
+</html>
