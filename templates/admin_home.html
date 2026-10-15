@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Creation Films — Admin Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+.dashboard-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0 28px}
+.dashboard-card{display:block;padding:18px 20px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);text-decoration:none;transition:transform .15s,border-color .15s}
+.dashboard-card:hover{transform:translateY(-2px);border-color:var(--brass)}
+.dashboard-card .icon{font-size:1.45rem;margin-bottom:8px}
+.dashboard-card strong{display:block;font-size:1rem;margin-bottom:5px}
+.dashboard-card span{display:block;color:var(--muted);font-size:.86rem;line-height:1.5}
+.section-title{font-family:Georgia,serif;font-size:1.35rem;margin:26px 0 12px}
+.gallery-list-item .meta{line-height:1.7}.album-public-settings{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fffdf9}.album-public-settings label{font-size:.82rem;color:var(--muted);display:block;margin:8px 0}.album-public-settings select{max-width:100%;padding:8px;border:1px solid var(--line);background:white}.album-public-settings button{margin-top:8px}
+@media(max-width:560px){.gallery-list-item{gap:12px;align-items:flex-start;flex-direction:column}.gallery-list-item>div:last-child{width:100%;flex-wrap:wrap}.gallery-list-item .btn{flex:1;text-align:center}}
+</style>
+</head>
+<body>
+<div class="admin-wrap">
+  <div class="display">Creation Films <span style="font-size:.55em;color:var(--muted);">Admin</span></div>
+  <p style="margin:8px 0 0;color:var(--muted);">Manage client albums, gallery content, and your studio branding from one place.</p>
+
+  <div class="dashboard-actions">
+    <a class="dashboard-card" href="{{ url_for('admin_branding') }}">
+      <div class="icon">🎨</div><strong>Branding & Contact</strong>
+      <span>Upload or change your transparent logo, Instagram, WhatsApp, email and studio details.</span>
+    </a>
+    <a class="dashboard-card" href="{{ url_for('admin_website') }}">
+      <div class="icon">🌐</div><strong>Public Website Manager</strong>
+      <span>Edit Home, Portfolio, Our Story and public website content.</span>
+    </a>
+    <a class="dashboard-card" href="#albums">
+      <div class="icon">📚</div><strong>Manage Albums</strong>
+      <span>Create client albums, edit album details, manage photos and videos, and open client previews.</span>
+    </a>
+  </div>
+
+  <h2 class="section-title" id="albums">Client Albums</h2>
+  <form class="new-gallery-form" method="post" action="{{ url_for('admin_new_gallery') }}">
+    <input type="text" name="name" placeholder="Album / client name, e.g. Priya & Arjun Wedding" required>
+    <input type="text" name="password" placeholder="Client gallery password" required>
+    <button class="btn" style="width:auto;padding:10px 22px;" type="submit">+ Create Album</button>
+  </form>
+
+  {% if not galleries %}
+    <div class="empty-state">No albums yet. Create your first client album above.</div>
+  {% endif %}
+
+  {% for slug, g in galleries.items() %}
+    <div class="gallery-list-item">
+      <div>
+        <div class="name">{{ g.name }}</div>
+        <div class="meta">{{ g.photos|length }} photos &middot; {{ g.videos|default([], true)|length }} videos<br>Gallery password: {{ g.password }}<br>Public listing: {{ 'Visible' if g.get('public_visible', true) else 'Hidden' }}</div>
+        <form class="album-public-settings" method="post" action="{{ url_for('admin_gallery_public_settings', slug=slug) }}">
+          <label><input type="checkbox" name="public_visible" value="1" {% if g.get('public_visible', true) %}checked{% endif %}> Show this album on public Client Gallery page</label>
+          <label>Cover photo
+            <select name="cover_photo_id"><option value="">Use default cover</option>{% for photo in g.get('photos', []) %}<option value="{{ photo.get('id','') }}" {% if g.get('cover_photo_id') == photo.get('id') %}selected{% endif %}>Photo {{ loop.index }} · {{ photo.get('filename') or photo.get('name') or photo.get('id','') }}</option>{% endfor %}</select>
+          </label>
+          <button class="btn btn-outline" style="width:auto;padding:7px 12px" type="submit">Save Gallery Display</button>
+        </form>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="btn" style="width:auto;padding:8px 16px;" href="{{ url_for('admin_gallery', slug=slug) }}">Manage Album</a>
+        <a class="btn btn-outline" style="width:auto;padding:8px 16px;" href="{{ url_for('client_gallery', slug=slug) }}" target="_blank" rel="noopener">Client Preview</a>
+      </div>
+    </div>
+  {% endfor %}
+
+  <p style="margin-top:40px;"><a href="{{ url_for('admin_logout') }}" style="color:var(--muted);font-size:.85rem;">Log out</a></p>
+</div>
+</body>
+</html>
