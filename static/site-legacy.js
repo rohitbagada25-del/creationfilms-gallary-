@@ -44,6 +44,7 @@ function start(){
   window.addEventListener('resize',later);
   window.addEventListener('load',function(){run(); setTimeout(run,600)});
   d.addEventListener('load',later,true); // every image load can change widths
+  try{ new MutationObserver(later).observe(d.body,{childList:true,subtree:true}) }catch(e){}
 }
 if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',start); else start();
 })();
