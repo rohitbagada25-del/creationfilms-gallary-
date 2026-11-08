@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Testimonials | Creation Films</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"><style>.tm-form{max-width:820px;margin:24px auto;background:#fff;padding:24px;border:1px solid var(--line);border-radius:12px}.tm-form label{display:block;margin:16px 0 7px;font-weight:600}.tm-form input,.tm-form textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}.tm-form textarea{min-height:170px;resize:vertical}.tm-form .chk{display:flex;gap:10px;align-items:center;font-weight:400}.tm-form .chk input{width:auto}.success{background:#e8f6ec;padding:12px;margin:12px 0;color:#176534;border-radius:6px}.fail{background:#fbeae7;padding:12px;margin:12px 0;color:#9b3027;border-radius:6px}.muted{color:var(--muted);font-size:.88rem;line-height:1.5}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}.thumb{width:140px;height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--line);margin-top:8px;display:block}.row2{display:grid;grid-template-columns:1fr 120px;gap:14px}@media(max-width:600px){.row2{grid-template-columns:1fr}}.danger{color:#9b3027;border-color:#9b3027}</style></head><body><div class="admin-wrap"><a href="{{ url_for('admin_home') }}">← Back to Admin</a><h1 class="display" style="margin-top:18px">Testimonials</h1><p class="muted">These appear on the public Testimonials page (/testimonials). The first one by position also appears on Home under "Love in words".</p>{% if saved %}<div class="success">Saved.</div>{% endif %}{% if error %}<div class="fail">{{ error }}</div>{% endif %}
+
+<form class="tm-form" method="post" enctype="multipart/form-data">
+<h2>Add a testimonial</h2><input type="hidden" name="action" value="add">
+<div class="row2"><div><label>Couple's names</label><input name="names" maxlength="120" placeholder="Akash &amp; Laveena" required></div><div><label>Position</label><input name="order" type="number" value="{{ (items|length + 1) }}"></div></div>
+<label>Heading line (optional)</label><input name="title" maxlength="160" placeholder="A heartfelt thank you">
+<label>Their words</label><textarea name="text" maxlength="4000" placeholder="Leave a blank line between paragraphs."></textarea>
+<label>Signature (shown in handwriting style)</label><input name="signature" maxlength="80" placeholder="Akash Laveena">
+<label>Photo</label><input name="photo" type="file" accept="image/jpeg,image/png,image/webp"><p class="muted">Resized and stored in the database, so it stays after server restarts.</p>
+<div class="actions"><button class="btn" type="submit">Add testimonial</button></div></form>
+
+{% for t in items|sort(attribute='order') %}
+<form class="tm-form" method="post" enctype="multipart/form-data">
+<h2>{{ t.names }}</h2><input type="hidden" name="action" value="save"><input type="hidden" name="tid" value="{{ t.id }}">
+<div class="row2"><div><label>Couple's names</label><input name="names" maxlength="120" value="{{ t.names }}" required></div><div><label>Position</label><input name="order" type="number" value="{{ t.order or 0 }}"></div></div>
+<label>Heading line (optional)</label><input name="title" maxlength="160" value="{{ t.title or '' }}">
+<label>Their words</label><textarea name="text" maxlength="4000">{{ t.text or '' }}</textarea>
+<label>Signature</label><input name="signature" maxlength="80" value="{{ t.signature or '' }}">
+<label>Photo</label>{% if t.photo_b64 %}<img class="thumb" src="{{ url_for('site_testimonial_photo', tid=t.id, v=t.photo_v or 0) }}" alt="">{% endif %}
+<input name="photo" type="file" accept="image/jpeg,image/png,image/webp">
+{% if t.photo_b64 %}<label class="chk"><input type="checkbox" name="remove_photo" value="1"> Remove photo</label>{% endif %}
+<div class="actions"><button class="btn" type="submit">Save changes</button><button class="btn btn-outline danger" type="submit" name="action" value="delete" onclick="return confirm('Delete this testimonial?')">Delete</button></div></form>
+{% endfor %}
+<div class="actions" style="max-width:820px;margin:0 auto 40px"><a class="btn btn-outline" href="/testimonials" target="_blank" rel="noopener">Preview page ↗</a></div>
+</div></body></html>
