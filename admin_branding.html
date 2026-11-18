@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Branding & Contact Settings</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><div class="admin-wrap" style="max-width:760px;">
+  <a href="{{ url_for('admin_home') }}" style="color:var(--muted);text-decoration:none;">← Back to galleries</a>
+  <h1 class="display" style="margin:20px 0 8px;">Branding & Contact</h1>
+  <p style="color:var(--muted);margin-bottom:24px;">These details appear in the footer of every unlocked client gallery. Update them here whenever you want.</p>
+  {% if saved %}<div class="empty-state" style="margin-bottom:18px;">Settings saved successfully ✓</div>{% endif %}
+  {% if error %}<div class="empty-state" style="margin-bottom:18px;color:#a33;">{{ error }}</div>{% endif %}
+  <form method="post" enctype="multipart/form-data" style="display:grid;gap:16px;">
+    <section style="padding:16px;border:1px solid var(--line);border-radius:8px;display:grid;gap:12px;">
+      <strong style="color:var(--ink);">Transparent Logo</strong>
+      <p style="margin:0;color:var(--muted);font-size:.88rem;">Upload a transparent PNG for the cleanest result. PNG, WEBP, or JPG accepted (max 5 MB). The logo appears in the client gallery footer.</p>
+      {% if branding.get('logo_url') %}<div style="padding:18px;background:repeating-conic-gradient(#f0eee8 0% 25%, #fff 0% 50%) 50% / 20px 20px;border:1px solid var(--line);border-radius:6px;text-align:center;"><img src="{{ branding.get('logo_url') }}" alt="Current brand logo" style="max-width:220px;max-height:120px;object-fit:contain;"></div>{% else %}<div style="padding:18px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);text-align:center;">No logo uploaded yet</div>{% endif %}
+      <label>Upload / change logo<input type="file" name="logo_file" accept="image/png,image/webp,image/jpeg"></label>
+      {% if branding.get('logo_url') %}<label style="display:flex;align-items:center;gap:8px;color:var(--muted);"><input type="checkbox" name="remove_logo" value="1" style="width:auto;"> Remove current logo</label>{% endif %}
+    </section>
+    <label>Brand name<input name="brand_name" value="{{ branding.get('brand_name','Creation Films') }}" placeholder="Creation Films" maxlength="100"></label>
+    <label>Tagline<input name="tagline" value="{{ branding.get('tagline','Visual Storytellers') }}" placeholder="Visual Storytellers" maxlength="160"></label>
+    <label>Instagram handle (without @)<input name="instagram_handle" value="{{ branding.get('instagram_handle','') }}" placeholder="creationfilms.in"></label>
+    <label>Instagram profile URL<input name="instagram_url" value="{{ branding.get('instagram_url','') }}" placeholder="https://www.instagram.com/creationfilms.in/"></label>
+    <label>WhatsApp number (country code included)<input name="whatsapp" value="{{ branding.get('whatsapp','') }}" placeholder="+91 98765 43210"></label>
+    <label>Business email<input type="email" name="email" value="{{ branding.get('email','') }}" placeholder="hello@example.com"></label>
+    <label>Location<input name="location" value="{{ branding.get('location','') }}" placeholder="Rajkot, Gujarat"></label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;"><button class="btn" type="submit" style="width:auto;padding:12px 22px;">Save Settings</button><a class="btn btn-outline" href="{{ url_for('admin_home') }}" style="width:auto;padding:12px 22px;">Cancel</a></div>
+  </form>
+</div>
+<style>label{display:grid;gap:7px;color:var(--muted);font-size:.9rem}label input:not([type=checkbox]){width:100%;box-sizing:border-box;padding:12px 13px;border:1px solid var(--line);background:var(--canvas);color:var(--ink);border-radius:4px;font:inherit}</style>
+</body></html>
